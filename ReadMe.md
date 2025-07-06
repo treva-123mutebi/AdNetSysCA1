@@ -1,115 +1,141 @@
-# AdNetSysCA1
+# Quickstart Guide for AdNetSysCA1
 
-This repository demonstrates a full-stack “Infrastructure-as-Code → Configuration Management → Containerization → CI/CD” workflow:
-
-1. **Terraform** to provision an AWS EC2 host  
-2. **Ansible** to install Docker and deploy a container  
-3. **Docker** to package a static site into an Nginx-based image  
-4. **GitHub Actions** to build & publish the image to Docker Hub (and optionally trigger a remote deploy via Ansible)
+Follow these steps in order. Using Terraform, Docker, Guthub and Github Actions, this guide will help you deploy a static site on an AWS EC2 instance using Docker.
 
 ---
 
-## Prerequisites
-- **AWS account** with permissions to create EC2, VPC, etc.  
-- **Docker Hub** account for storing images  
-- **Local tools**:  
-  - [Terraform](https://www.terraform.io/downloads) ≥ 1. → `terraform`  
-  - [Ansible](https://docs.ansible.com/ansible/latest/installation_guide/intro_installation.html) ≥ 2.9 → `ansible`, `ansible-galaxy`  
-  - [Docker Desktop](https://www.docker.com/products/docker-desktop) → `docker`  
-  - [Git](https://git-scm.com/downloads) → `git`  
-
----
-
-## 1. Clone the Repo
+## 1. Clone the repository
 
 ```bash
 git clone https://github.com/treva-123mutebi/AdNetSysCA1.git
 cd AdNetSysCA1
 ```
-## 2. Configure AWS Credentials
-Create a file at `CA1/.aws/credentials` with your AWS access key and secret key:
 
-```bash
- ~/.aws/credentials
+---
+
+## 2. Configure AWS credentials
+
+In **your home directory**, create or update:
+
+```ini
+# ~/.aws/credentials
 [default]
-aws_access_key_id     = AKIA…
-aws_secret_access_key = …
+aws_access_key_id     = <YOUR_AWS_ACCESS_KEY_ID>
+aws_secret_access_key = <YOUR_AWS_SECRET_ACCESS_KEY>
 ```
-```bash
+
+```ini
 # ~/.aws/config
 [default]
 region = eu-north-1
+output = json
 ```
 
-Do not commit these files—see .gitignore.
+> **Do not** commit these files.
 
-## 3. Provision the EC2 Host (Terraform)
-Review and customize variables.tf defaults as needed.
-Create a terraform.tfvars in the root (not in Git) with
+---
 
-```bash
-subnet_id              = "subnet-09acd045de65cee76"
-vpc_security_group_ids = ["sg-033e56ff6410c49c1"]
-key_name               = "login"
+## 3. Supply Terraform variables
+
+At the repo root, create `terraform.tfvars`:
+
+```hcl
+subnet_id              = "<YOUR_SUBNET_ID>"
+vpc_security_group_ids = ["<YOUR_SECURITY_GROUP_ID>"]
+key_name               = "<YOUR_KEYPAIR_NAME>"
 ```
-Initialize & apply
+
+---
+
+## 4. Provision the EC2 host (Terraform)
 
 ```bash
-
 terraform init
-terraform apply -var-file=terraform.tfvars
+terraform apply -var-file=terraform.tfvars -auto-approve
 ```
 
-## 4. Configure Ansible Inventory
-Move your SSH key into ~/.ssh/login.pem and chmod 600 it
-Edit config/inventory.ini to point at your host
+> **Output**: Note the `docker_host_public_ip`.
 
-```ini
-[docker_hosts]
-docker1 ansible_host=<docker_host_public_ip> ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/login.pem
-```
-Install the Docker collection
-```ini
-ansible-galaxy collection install community.docker
-```
+---
 
-Run the playbook
+## 5. Configure Ansible
+
+1. **Move** your SSH key and set permissions:
+
+   ```bash
+   mv <PATH_TO_YOUR_LOGIN.PEM> ~/.ssh/login.pem
+   chmod 600 ~/.ssh/login.pem
+   ```
+
+2. **Edit** `config/inventory.ini`, replacing `<IP>`:
+
+   ```ini
+   [docker_hosts]
+   docker1 ansible_host=<docker_host_public_ip> ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/login.pem
+   ```
+
+3. **Install** the Docker Ansible collection:
+
+   ```bash
+   ansible-galaxy collection install community.docker
+   ```
+
+---
+
+## 6. Run the Ansible playbook
+
 ```bash
 ansible-playbook -i config/inventory.ini playbook.yml
 ```
-## 5. Build & Push Docker Image
-Build the Docker image
-```bash 
-docker build -t trevormutebi/ca1:latest .
-```
-Push to Docker Hub
+
+* Installs Docker on the EC2 host
+* Adds `ubuntu` to the `docker` group
+* Clones/updates the Git repo on the host
+* Starts the `webapp` container (binding port 80)
+
+---
+
+## 7. Push a change to trigger CI/CD
+
+Make an empty commit to fire GitHub Actions:
+
 ```bash
-docker push trevormutebi/ca1:latest
+git commit --allow-empty -m "Trigger CI/CD"
+git push origin main
 ```
-##  6. CI/CD with GitHub Actions
-Checkout code
 
-Build & smoke-test the Docker image
+**GitHub Actions** will then:
 
-Log in to Docker Hub (uses secrets)
+1. Build & smoke-test the Docker image
+2. Push `trevormutebi/ca1:latest` to Docker Hub
+3. SSH into your EC2 and run:
 
-Push trevormutebi/ca1:latest
+   ```bash
+   docker pull trevormutebi/ca1:latest
+   docker rm -f webapp || true
+   docker run -d --name webapp \
+     --restart=always -p 80:80 \
+     trevormutebi/ca1:latest
+   ```
 
-Secrets
-In your GitHub repo’s Settings → Secrets → Actions, add:
+---
 
-DOCKERHUB_USERNAME → your Docker Hub user
+## 8. Verify the deployment
 
-DOCKERHUB_TOKEN → a Docker Hub access token
+Open in your browser:
 
-(Optional for auto-deploy)
+```
+http://<docker_host_public_ip>
+```
 
-HOST_IP → the EC2 public IP
+You should see your static site served by Nginx.
 
-SSH_PRIVATE_KEY → contents of ~/.ssh/login.pem
+---
 
-If you include the appleboy/ssh-action step, the workflow will SSH into your host and re-run the Ansible playbook automatically.
+## 9. Tear down
 
-## 7. Access the Site
-Open your browser and navigate to the public IP of your EC2 instance. You should see the static site served by Nginx.
+When finished, destroy all resources:
 
+```bash
+terraform destroy -var-file=terraform.tfvars -auto-approve
+```
