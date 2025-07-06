@@ -1,0 +1,54 @@
+name: Build & Publish to Docker Hub
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Check out the code
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      # 2. Build the Docker image
+      - name: Build image
+        run: |
+          docker build \
+            --file site/Dockerfile \
+            --tag trevormutebi/ca1:latest \
+            site/
+
+      # 3. Smoke-test the container
+      - name: Smoke test
+        run: |
+          docker run -d --name smoke-test -p 8080:80 trevormutebi/ca1:latest
+          sleep 5
+          curl -f http://localhost:8080
+          docker rm -f smoke-test
+
+      # 4. Log in to Docker Hub
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # 5. Push the image
+      - name: Push to Docker Hub
+        run: |
+          docker push trevormutebi/ca1:latest
+      # 6. SSH & run Ansible on your EC2 host 
+      - name: Deploy via Ansible
+        uses: appleboy/ssh-action@v0.1.7
+        with:
+          host: ${{ secrets.HOST_IP }}              # e.g. 13.53.42.188
+          username: ubuntu                          # the SSH user on your EC2
+          key: ${{ secrets.SSH_PRIVATE_KEY }}       # your private key (login.pem) stored as a secret
+          script: |
+            cd ~/AdNetworking/CA1                   # go to your project directory
+            ansible-playbook -i config/inventory.ini playbook.yml    
+    

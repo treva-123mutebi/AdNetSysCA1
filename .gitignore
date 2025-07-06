@@ -1,0 +1,21 @@
+# Ignore Docker build cache and images
+**/.docker*
+**/docker-desktop*
+docker-compose*.yml
+
+
+# Terraform local state and caches
+.terraform/
+*.tfstate
+*.tfstate.backup
+
+# Crash logs
+crash.log
+
+# Sensible local overrides
+terraform.tfvars
+.aws/credentials
+.aws/config
+
+# macOS files
+.DS_Store

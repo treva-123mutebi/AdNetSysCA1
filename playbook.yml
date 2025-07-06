@@ -1,0 +1,31 @@
+---
+- name: Configure Docker host
+  hosts: docker_hosts
+  become: yes
+
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+
+    - name: Install Docker
+      apt:
+        name: docker.io
+        state: present
+
+    - name: Ensure Docker is started and enabled
+      service:
+        name: docker
+        state: started
+        enabled: yes
+
+   
+
+    - name: Pull and run my static-site container
+      community.docker.docker_container:
+        name: webapp
+        image: trevormutebi/ca1:latest
+        state: started
+        restart_policy: always
+        published_ports:
+          - "80:80"
