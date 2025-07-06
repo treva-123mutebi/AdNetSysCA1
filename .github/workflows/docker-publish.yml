@@ -41,14 +41,27 @@ jobs:
       - name: Push to Docker Hub
         run: |
           docker push trevormutebi/ca1:latest
-      # 6. SSH & run Ansible on your EC2 host 
-      - name: Deploy via Ansible
+      # 6. SSH & deploy via Docker on your EC2 host
+      - name: Deploy via Docker pull on EC2
         uses: appleboy/ssh-action@v0.1.7
         with:
-          host: ${{ secrets.HOST_IP }}              # e.g. 13.53.42.188
-          username: ubuntu                          # the SSH user on your EC2
-          key: ${{ secrets.SSH_PRIVATE_KEY }}       # your private key (login.pem) stored as a secret
+          host: ${{ secrets.HOST_IP }}
+          username: ubuntu
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: 22
           script: |
-            cd ~/AdNetworking/CA1                   # go to your project directory
-            ansible-playbook -i config/inventory.ini playbook.yml    
+            # Pull the latest image
+            docker pull trevormutebi/ca1:latest
+
+            # Stop & remove any existing container named webapp
+            if docker ps --format '{{.Names}}' | grep -q '^webapp$'; then
+              docker rm -f webapp
+            fi
+
+            # Run the new container (detached) mapping port 80
+            docker run -d \
+              --name webapp \
+              --restart=always \
+              -p 80:80 \
+              trevormutebi/ca1:latest
     
